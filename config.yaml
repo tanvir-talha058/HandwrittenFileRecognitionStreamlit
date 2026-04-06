@@ -5,7 +5,7 @@ ocr:
   det_db_thresh: 0.3
 
 field_mapping:
-  confidence_threshold: 0.8
+  confidence_threshold: 0.6
   fuzzy_match: true
   date_formats:
     - "%d/%m/%Y"

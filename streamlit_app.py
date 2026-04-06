@@ -38,7 +38,7 @@ def run_pipeline(
     use_gpu: bool,
     template_path: Path | None,
     show_boxes: bool,
-) -> tuple[Path, dict[str, str], Path | None, list[dict[str, Any]], str | None]:
+) -> tuple[Path, dict[str, str], Path | None, list[dict[str, Any]], list[str], str | None]:
     cfg = load_config("config.yaml")
     out_cfg = cfg.get("output", {})
 
@@ -47,7 +47,7 @@ def run_pipeline(
 
     mapper = FieldMapper(config_path="config.yaml")
     mapper.conf_threshold = confidence
-    form_data = mapper.map(ocr_results)
+    form_data, transcript_lines, _ = mapper.map_with_context(ocr_results)
 
     outputs_dir = Path("outputs")
     outputs_dir.mkdir(parents=True, exist_ok=True)
@@ -63,7 +63,7 @@ def run_pipeline(
         chosen_template = template_path if template_path else (Path(fallback_template) if fallback_template else None)
         filler = PDFFiller(template=str(chosen_template) if chosen_template else None)
         filler.fill(form_data, str(output_path))
-        return output_path, form_data, debug_path, ocr_results, engine.last_error
+        return output_path, form_data, debug_path, ocr_results, transcript_lines, engine.last_error
 
     if output_format == "docx":
         output_path = outputs_dir / "ui_filled_form.docx"
@@ -71,11 +71,11 @@ def run_pipeline(
         chosen_template = template_path if template_path else (Path(fallback_template) if fallback_template else None)
         filler = DOCXFiller(template=str(chosen_template) if chosen_template else None)
         filler.fill(form_data, str(output_path))
-        return output_path, form_data, debug_path, ocr_results, engine.last_error
+        return output_path, form_data, debug_path, ocr_results, transcript_lines, engine.last_error
 
     output_path = outputs_dir / "ui_filled_form.json"
     output_path.write_text(json.dumps(form_data, indent=2), encoding="utf-8")
-    return output_path, form_data, debug_path, ocr_results, engine.last_error
+    return output_path, form_data, debug_path, ocr_results, transcript_lines, engine.last_error
 
 
 def main() -> None:
@@ -87,7 +87,7 @@ def main() -> None:
     with st.sidebar:
         st.header("Settings")
         output_format = st.selectbox("Output format", ["pdf", "docx", "json"], index=0)
-        confidence = st.slider("OCR confidence threshold", min_value=0.1, max_value=1.0, value=0.8, step=0.05)
+        confidence = st.slider("OCR confidence threshold", min_value=0.1, max_value=1.0, value=0.55, step=0.05)
         lang = st.text_input("OCR language", value="en")
         preprocess = st.checkbox("Preprocess image", value=False)
         use_gpu = st.checkbox("Use GPU (if available)", value=False)
@@ -132,7 +132,7 @@ def main() -> None:
                 template_path = write_uploaded_file(template_file, temp_path / template_file.name)
 
             try:
-                output_path, form_data, debug_path, ocr_results, ocr_error = run_pipeline(
+                output_path, form_data, debug_path, ocr_results, transcript_lines, ocr_error = run_pipeline(
                     input_path=input_path,
                     output_format=output_format,
                     confidence=confidence,
@@ -165,6 +165,12 @@ def main() -> None:
 
     st.subheader("Extracted Fields")
     st.json(form_data)
+
+    with st.expander("Full OCR Transcript", expanded=False):
+        if transcript_lines:
+            st.text("\n".join(transcript_lines))
+        else:
+            st.write("No OCR transcript was assembled.")
 
     file_bytes = output_path.read_bytes()
     mime = {

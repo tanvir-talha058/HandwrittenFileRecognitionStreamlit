@@ -56,7 +56,7 @@ def main() -> int:
     out_cfg = cfg.get("output", {})
 
     output_format = args.format or out_cfg.get("format", "pdf")
-    confidence = args.confidence if args.confidence is not None else float(mapping_cfg.get("confidence_threshold", 0.8))
+    confidence = args.confidence if args.confidence is not None else float(mapping_cfg.get("confidence_threshold", 0.6))
 
     engine = OCREngine(
         lang=args.lang or ocr_cfg.get("lang", "en"),
