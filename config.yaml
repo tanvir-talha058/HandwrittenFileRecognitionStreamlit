@@ -1,0 +1,57 @@
+ocr:
+  lang: en
+  use_angle_cls: true
+  use_gpu: false
+  det_db_thresh: 0.3
+
+field_mapping:
+  confidence_threshold: 0.8
+  fuzzy_match: true
+  date_formats:
+    - "%d/%m/%Y"
+    - "%d-%m-%Y"
+    - "%d %B %Y"
+  fields:
+    applicant_name:
+      keywords: ["applicant name", "full name", "name"]
+    date_of_birth:
+      keywords: ["date of birth", "dob", "birth"]
+    nid_number:
+      keywords: ["nid", "national id", "national id no", "nid number"]
+    father_name:
+      keywords: ["father", "father name"]
+    mother_name:
+      keywords: ["mother", "mother name"]
+    present_address:
+      keywords: ["present address", "current address"]
+    permanent_address:
+      keywords: ["permanent address"]
+    mobile_number:
+      keywords: ["mobile", "phone", "contact"]
+    occupation:
+      keywords: ["occupation", "profession"]
+    monthly_income:
+      keywords: ["monthly income", "income"]
+    loan_amount:
+      keywords: ["loan amount", "amount requested", "amount"]
+    loan_purpose:
+      keywords: ["loan purpose", "purpose"]
+    property_address:
+      keywords: ["property address", "property location"]
+    land_area:
+      keywords: ["land area", "sqft", "area"]
+    co_applicant_name:
+      keywords: ["co-applicant", "co applicant"]
+    guarantor_name:
+      keywords: ["guarantor"]
+    repayment_period:
+      keywords: ["repayment period", "tenure"]
+    signature_date:
+      keywords: ["signature date", "date"]
+
+output:
+  format: pdf
+  template_pdf: templates/template.pdf
+  template_docx: templates/loan_form_template.docx
+  output_dir: outputs
+  save_debug_image: false
