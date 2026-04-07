@@ -21,6 +21,7 @@ streamlit run streamlit_app.py
 3. In the UI:
 
 - Upload handwritten input file (JPG/PNG/PDF)
+- Upload input file (JPG/PNG/PDF/DOCX/TXT)
 - Select output format (PDF/DOCX/JSON)
 - Optionally upload your own output template (PDF or DOCX)
 - Click Process and Fill Form
@@ -59,4 +60,5 @@ Supported output formats: `pdf`, `docx`, `json`.
 
 - Add official template files in `templates/`.
 - If templates are missing, fallback outputs are still generated.
-- PDF input uses the first page.
+- PDF input is processed page-by-page for the full document.
+- DOCX and TXT input are parsed directly as text documents.

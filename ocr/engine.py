@@ -7,6 +7,7 @@ from typing import Any
 import cv2
 import fitz
 import numpy as np
+from docx import Document
 
 from .preprocessor import preprocess_image
 
@@ -24,7 +25,12 @@ class OCREngine:
         self.use_angle_cls = use_angle_cls
         self.det_db_thresh = det_db_thresh
         self.last_error: str | None = None
-        self._ocr = self._build_ocr()
+        self._ocr: Any | None = None
+
+    def _get_ocr(self) -> Any:
+        if self._ocr is None:
+            self._ocr = self._build_ocr()
+        return self._ocr
 
     def _build_ocr(self) -> Any:
         os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
@@ -60,14 +66,17 @@ class OCREngine:
                 init_kwargs["enable_mkldnn"] = False
             return PaddleOCR(**init_kwargs)
 
-    def _load_image(self, input_path: str) -> np.ndarray:
+    def _load_first_image(self, input_path: str) -> np.ndarray:
         path = Path(input_path)
         if not path.exists():
             raise FileNotFoundError(f"Input file not found: {input_path}")
 
         suffix = path.suffix.lower()
         if suffix == ".pdf":
-            return self._pdf_page_to_image(path)
+            pages = self._pdf_pages_to_images(path)
+            if not pages:
+                raise ValueError("PDF has no pages.")
+            return pages[0]
 
         image = cv2.imread(str(path))
         if image is None:
@@ -75,65 +84,158 @@ class OCREngine:
         return image
 
     @staticmethod
-    def _pdf_page_to_image(path: Path) -> np.ndarray:
+    def _pdf_pages_to_images(path: Path) -> list[np.ndarray]:
         document = fitz.open(path)
         if len(document) == 0:
+            document.close()
             raise ValueError("PDF has no pages.")
 
-        page = document[0]
-        pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-        image = np.frombuffer(pixmap.samples, dtype=np.uint8).reshape(pixmap.height, pixmap.width, pixmap.n)
-        document.close()
+        images: list[np.ndarray] = []
+        for page in document:
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+            image = np.frombuffer(pixmap.samples, dtype=np.uint8).reshape(pixmap.height, pixmap.width, pixmap.n)
 
-        if pixmap.n == 4:
-            return cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
-        return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            if pixmap.n == 4:
+                images.append(cv2.cvtColor(image, cv2.COLOR_RGBA2BGR))
+            else:
+                images.append(cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+        document.close()
+        return images
+
+    @staticmethod
+    def _extract_pdf_text_lines(path: Path) -> list[str]:
+        lines: list[str] = []
+        document = fitz.open(path)
+        try:
+            for page in document:
+                page_text = page.get_text("text")
+                if not page_text:
+                    continue
+                for line in page_text.splitlines():
+                    compact = line.strip()
+                    if compact:
+                        lines.append(compact)
+        finally:
+            document.close()
+        return lines
+
+    @staticmethod
+    def _extract_docx_text_lines(path: Path) -> list[str]:
+        lines: list[str] = []
+        document = Document(str(path))
+
+        for paragraph in document.paragraphs:
+            compact = paragraph.text.strip()
+            if compact:
+                lines.append(compact)
+
+        for table in document.tables:
+            for row in table.rows:
+                cells = [cell.text.strip() for cell in row.cells if cell.text and cell.text.strip()]
+                if cells:
+                    lines.append(" | ".join(cells))
+
+        return lines
+
+    @staticmethod
+    def _extract_txt_lines(path: Path) -> list[str]:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        return [line.strip() for line in text.splitlines() if line.strip()]
+
+    @staticmethod
+    def _lines_to_blocks(lines: list[str]) -> list[dict[str, Any]]:
+        blocks: list[dict[str, Any]] = []
+        y = 20
+        for line in lines:
+            blocks.append(
+                {
+                    "text": line,
+                    "confidence": 1.0,
+                    "bbox": [[10, y], [1200, y], [1200, y + 24], [10, y + 24]],
+                }
+            )
+            y += 34
+        return blocks
 
     def run(self, input_path: str, min_confidence: float = 0.8, preprocess: bool = False) -> list[dict[str, Any]]:
         self.last_error = None
-        image = self._load_image(input_path)
-        if preprocess:
-            image = preprocess_image(image)
+        path = Path(input_path)
+        suffix = path.suffix.lower()
+
+        if suffix == ".docx":
+            return self._lines_to_blocks(self._extract_docx_text_lines(path))
+        if suffix == ".txt":
+            return self._lines_to_blocks(self._extract_txt_lines(path))
+
+        images: list[np.ndarray]
+        if suffix == ".pdf":
+            images = self._pdf_pages_to_images(path)
+        else:
+            images = [self._load_first_image(input_path)]
 
         try:
-            result = self._predict(image)
-        except TypeError as exc:
-            # PaddleOCR >= 3.x no longer accepts the cls keyword here.
-            if "unexpected keyword argument 'cls'" not in str(exc):
-                raise
-            try:
-                result = self._ocr.ocr(image)
-            except Exception as nested_exc:
-                self.last_error = f"{type(nested_exc).__name__}: {nested_exc}"
-                return []
+            self._get_ocr()
         except Exception as exc:
             self.last_error = f"{type(exc).__name__}: {exc}"
+            if suffix == ".pdf":
+                return self._lines_to_blocks(self._extract_pdf_text_lines(path))
             return []
 
-        parsed = self._parse_result(result)
-        if not parsed:
-            return []
+        all_blocks: list[dict[str, Any]] = []
+        page_stride = 10000
 
-        blocks: list[dict[str, Any]] = []
-        for item in parsed:
-            bbox, payload = item
-            text, confidence = payload
-            if confidence < min_confidence:
+        for page_index, image in enumerate(images):
+            page_image = preprocess_image(image) if preprocess else image
+
+            try:
+                result = self._predict(page_image)
+            except TypeError as exc:
+                # PaddleOCR >= 3.x no longer accepts the cls keyword here.
+                if "unexpected keyword argument 'cls'" not in str(exc):
+                    raise
+                try:
+                    result = self._ocr.ocr(page_image)
+                except Exception as nested_exc:
+                    self.last_error = f"{type(nested_exc).__name__}: {nested_exc}"
+                    return []
+            except Exception as exc:
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                return []
+
+            parsed = self._parse_result(result)
+            if not parsed:
                 continue
-            blocks.append(
-                {
-                    "text": text.strip(),
-                    "confidence": float(confidence),
-                    "bbox": [[int(p[0]), int(p[1])] for p in bbox],
-                }
-            )
-        return blocks
+
+            for item in parsed:
+                bbox, payload = item
+                text, confidence = payload
+                if confidence < min_confidence:
+                    continue
+                adjusted_bbox = [[int(p[0]), int(p[1]) + (page_index * page_stride)] for p in bbox]
+                all_blocks.append(
+                    {
+                        "text": text.strip(),
+                        "confidence": float(confidence),
+                        "bbox": adjusted_bbox,
+                        "page": page_index + 1,
+                    }
+                )
+
+        if all_blocks:
+            return all_blocks
+
+        # Fallback for digitally generated PDFs where OCR can fail or be unnecessary.
+        if suffix == ".pdf":
+            return self._lines_to_blocks(self._extract_pdf_text_lines(path))
+
+        return []
 
     def _predict(self, image: np.ndarray) -> Any:
-        predict = getattr(self._ocr, "predict", None)
+        ocr = self._get_ocr()
+        predict = getattr(ocr, "predict", None)
         if callable(predict):
             return predict(image)
-        return self._ocr.ocr(image, cls=self.use_angle_cls)
+        return ocr.ocr(image, cls=self.use_angle_cls)
 
     @staticmethod
     def _parse_result(result: Any) -> list[tuple[Any, Any]]:
@@ -193,7 +295,7 @@ class OCREngine:
         output_path: str,
         preprocess: bool = False,
     ) -> str:
-        image = self._load_image(input_path)
+        image = self._load_first_image(input_path)
         if preprocess:
             image = preprocess_image(image)
 

@@ -24,7 +24,7 @@ def load_config(config_path: str) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Home Loan Form Auto-Filler using PaddleOCR")
-    parser.add_argument("--input", required=True, help="Path to handwritten form (JPG, PNG, or PDF)")
+    parser.add_argument("--input", required=True, help="Path to input document (JPG, PNG, PDF, DOCX, or TXT)")
     parser.add_argument("--output", help="Output file path")
     parser.add_argument("--format", choices=["pdf", "docx", "json"], help="Output format")
     parser.add_argument("--show-boxes", action="store_true", help="Save debug image with OCR boxes")

@@ -98,8 +98,8 @@ def main() -> None:
     with col1:
         st.subheader("1) Upload Handwritten File")
         input_file = st.file_uploader(
-            "Accepted formats: JPG, JPEG, PNG, PDF",
-            type=["jpg", "jpeg", "png", "pdf"],
+            "Accepted formats: JPG, JPEG, PNG, PDF, DOCX, TXT",
+            type=["jpg", "jpeg", "png", "pdf", "docx", "txt"],
             key="input_file",
         )
 
