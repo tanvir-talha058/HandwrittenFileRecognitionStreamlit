@@ -58,6 +58,9 @@ class OCREngine:
             init_kwargs: dict[str, Any] = {
                 "lang": self.lang,
                 "device": device,
+                "use_doc_orientation_classify": False,
+                "use_doc_unwarping": False,
+                "use_textline_orientation": False,
                 "text_det_thresh": self.det_db_thresh,
             }
             if device == "cpu":
@@ -229,6 +232,55 @@ class OCREngine:
             return self._lines_to_blocks(self._extract_pdf_text_lines(path))
 
         return []
+
+    def run_image_array(
+        self,
+        image: np.ndarray,
+        min_confidence: float = 0.8,
+        preprocess: bool = False,
+        page_number: int = 1,
+    ) -> list[dict[str, Any]]:
+        self.last_error = None
+        page_image = preprocess_image(image) if preprocess else image
+
+        try:
+            self._get_ocr()
+        except Exception as exc:
+            self.last_error = f"{type(exc).__name__}: {exc}"
+            return []
+
+        try:
+            result = self._predict(page_image)
+        except TypeError as exc:
+            if "unexpected keyword argument 'cls'" not in str(exc):
+                raise
+            try:
+                result = self._ocr.ocr(page_image)
+            except Exception as nested_exc:
+                self.last_error = f"{type(nested_exc).__name__}: {nested_exc}"
+                return []
+        except Exception as exc:
+            self.last_error = f"{type(exc).__name__}: {exc}"
+            return []
+
+        parsed = self._parse_result(result)
+        if not parsed:
+            return []
+
+        blocks: list[dict[str, Any]] = []
+        for bbox, payload in parsed:
+            text, confidence = payload
+            if float(confidence) < min_confidence:
+                continue
+            blocks.append(
+                {
+                    "text": text.strip(),
+                    "confidence": float(confidence),
+                    "bbox": [[int(p[0]), int(p[1])] for p in bbox],
+                    "page": page_number,
+                }
+            )
+        return blocks
 
     def _predict(self, image: np.ndarray) -> Any:
         ocr = self._get_ocr()

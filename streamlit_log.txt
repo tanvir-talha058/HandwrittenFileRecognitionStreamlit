@@ -1,0 +1,21 @@
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://172.16.50.92:8501
+  External URL: http://119.148.28.89:8501
+
+Connectivity check to the model hoster has been skipped because `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK` is enabled.
+Creating model: ('PP-LCNet_x1_0_doc_ori', None)
+Model files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Tanvir\.paddlex\official_models\PP-LCNet_x1_0_doc_ori`.
+INFO: Could not find files for the given pattern(s).
+d:\UCB\HandwrittenFileRecognitionStreamlit\.venv\Lib\site-packages\paddle\utils\cpp_extension\extension_utils.py:712: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+Creating model: ('UVDoc', None)
+Model files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Tanvir\.paddlex\official_models\UVDoc`.
+Creating model: ('PP-LCNet_x1_0_textline_ori', None)
+Model files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Tanvir\.paddlex\official_models\PP-LCNet_x1_0_textline_ori`.
+Creating model: ('PP-OCRv5_server_det', None)
+Model files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Tanvir\.paddlex\official_models\PP-OCRv5_server_det`.
+Creating model: ('en_PP-OCRv5_mobile_rec', None)
+Model files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Tanvir\.paddlex\official_models\en_PP-OCRv5_mobile_rec`.
