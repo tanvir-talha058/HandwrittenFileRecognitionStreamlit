@@ -26,14 +26,36 @@ class OCREngine:
         self.det_db_thresh = det_db_thresh
         self.last_error: str | None = None
         self._ocr: Any | None = None
+        self._force_safe_cpu_runtime = False
 
     def _get_ocr(self) -> Any:
         if self._ocr is None:
             self._ocr = self._build_ocr()
         return self._ocr
 
-    def _build_ocr(self) -> Any:
+    def _configure_runtime_environment(self) -> None:
         os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+
+        if not self.use_gpu or self._force_safe_cpu_runtime:
+            os.environ["FLAGS_use_mkldnn"] = "0"
+            os.environ["FLAGS_enable_pir_api"] = "0"
+            os.environ["FLAGS_enable_pir_in_executor"] = "0"
+
+            try:
+                import paddle
+
+                paddle.set_flags(
+                    {
+                        "FLAGS_use_mkldnn": False,
+                        "FLAGS_enable_pir_api": False,
+                    }
+                )
+            except Exception:
+                # Flag support varies across Paddle builds; env vars still help.
+                pass
+
+    def _build_ocr(self) -> Any:
+        self._configure_runtime_environment()
 
         try:
             from paddleocr import PaddleOCR
@@ -68,6 +90,26 @@ class OCREngine:
                 # some Paddle runtime combinations with oneDNN executor errors.
                 init_kwargs["enable_mkldnn"] = False
             return PaddleOCR(**init_kwargs)
+
+    @staticmethod
+    def _is_problematic_runtime_error(exc: Exception) -> bool:
+        message = str(exc)
+        return any(
+            fragment in message
+            for fragment in (
+                "ConvertPirAttribute2RuntimeAttribute",
+                "onednn_instruction.cc",
+                "oneDNN",
+                "mkldnn",
+            )
+        )
+
+    def _retry_with_safe_cpu_runtime(self, image: np.ndarray) -> Any:
+        self._force_safe_cpu_runtime = True
+        self.use_gpu = False
+        self._ocr = None
+        self._configure_runtime_environment()
+        return self._predict(image)
 
     def _load_first_image(self, input_path: str) -> np.ndarray:
         path = Path(input_path)
@@ -202,8 +244,15 @@ class OCREngine:
                     self.last_error = f"{type(nested_exc).__name__}: {nested_exc}"
                     return []
             except Exception as exc:
-                self.last_error = f"{type(exc).__name__}: {exc}"
-                return []
+                if self._is_problematic_runtime_error(exc):
+                    try:
+                        result = self._retry_with_safe_cpu_runtime(page_image)
+                    except Exception as retry_exc:
+                        self.last_error = f"{type(retry_exc).__name__}: {retry_exc}"
+                        return []
+                else:
+                    self.last_error = f"{type(exc).__name__}: {exc}"
+                    return []
 
             parsed = self._parse_result(result)
             if not parsed:
@@ -260,8 +309,15 @@ class OCREngine:
                 self.last_error = f"{type(nested_exc).__name__}: {nested_exc}"
                 return []
         except Exception as exc:
-            self.last_error = f"{type(exc).__name__}: {exc}"
-            return []
+            if self._is_problematic_runtime_error(exc):
+                try:
+                    result = self._retry_with_safe_cpu_runtime(page_image)
+                except Exception as retry_exc:
+                    self.last_error = f"{type(retry_exc).__name__}: {retry_exc}"
+                    return []
+            else:
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                return []
 
         parsed = self._parse_result(result)
         if not parsed:
