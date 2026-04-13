@@ -70,6 +70,7 @@ class FieldMapper:
         extracted, _, _ = self.map_with_context(ocr_results)
         return extracted
 
+
     def map_with_context(self, ocr_results: list[dict[str, Any]]) -> tuple[dict[str, str], list[str], list[dict[str, Any]]]:
         blocks = self._normalize_blocks(ocr_results)
         lines = self._group_blocks_into_lines(blocks)

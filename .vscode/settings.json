@@ -3,6 +3,10 @@
         "/^/home/dti/UCB/HandwrittenFileRecognitionStreamlit/\\.venv/bin/streamlit run streamlit_app\\.py$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^/home/dti/UCB/HandwrittenFileRecognitionStreamlit/\\.venv/bin/python -m streamlit run streamlit_app\\.py$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }
