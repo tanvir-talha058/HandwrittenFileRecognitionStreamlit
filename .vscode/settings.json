@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^/home/dti/UCB/HandwrittenFileRecognitionStreamlit/\\.venv/bin/streamlit run streamlit_app\\.py$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
