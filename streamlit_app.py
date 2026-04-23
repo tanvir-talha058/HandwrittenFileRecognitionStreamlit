@@ -23,6 +23,34 @@ UPLOADS_DIR = Path("outputs/uploads")
 PAGE_STRIDE = 10000
 
 
+def _paddle_runtime_summary() -> str | None:
+    try:
+        import paddle
+
+        compiled_with_cuda = bool(getattr(paddle, "is_compiled_with_cuda", lambda: False)())
+        try:
+            device = paddle.device.get_device()
+        except Exception:
+            device = "unknown"
+        return f"Paddle {paddle.__version__} · device: {device} · CUDA build: {compiled_with_cuda}"
+    except Exception:
+        return None
+
+
+def _paddle_cuda_available() -> bool:
+    try:
+        import paddle
+
+        return bool(getattr(paddle, "is_compiled_with_cuda", lambda: False)())
+    except Exception:
+        return False
+
+
+@st.cache_resource(show_spinner=False)
+def _cached_ocr_engine(lang: str, use_gpu: bool, use_angle_cls: bool, det_db_thresh: float) -> OCREngine:
+    return OCREngine(lang=lang, use_gpu=use_gpu, use_angle_cls=use_angle_cls, det_db_thresh=det_db_thresh)
+
+
 def load_config(config_path: str = "config.yaml") -> dict[str, Any]:
     path = Path(config_path)
     if not path.exists():
@@ -236,8 +264,15 @@ def run_pipeline(
 ) -> tuple[Path, dict[str, str], Path | None, list[dict[str, Any]], list[str], str | None]:
     cfg = load_config("config.yaml")
     out_cfg = cfg.get("output", {})
+    ocr_cfg = cfg.get("ocr", {})
+    det_db_thresh = float(ocr_cfg.get("det_db_thresh", 0.3))
 
-    engine = OCREngine(lang=lang, use_gpu=use_gpu, use_angle_cls=use_angle_cls)
+    engine = _cached_ocr_engine(
+        lang=lang,
+        use_gpu=use_gpu,
+        use_angle_cls=use_angle_cls,
+        det_db_thresh=det_db_thresh,
+    )
     ocr_results = engine.run(str(input_path), min_confidence=confidence, preprocess=preprocess)
 
     mapper = FieldMapper(config_path="config.yaml")
@@ -314,6 +349,9 @@ def main() -> None:
         lang = st.text_input("OCR language", value="en")
         preprocess = st.checkbox("Preprocess image", value=False)
         use_gpu = st.checkbox("Use GPU", value=False)
+        runtime = _paddle_runtime_summary()
+        if runtime:
+            st.caption(runtime)
         show_boxes = st.checkbox("Show overlay boxes", value=True)
 
         st.divider()
@@ -445,6 +483,9 @@ def main() -> None:
 
                     use_angle_cls = parsing_model == "PP-OCR (Default)"
                     engine_lang = lang.strip() or "en"
+                    effective_use_gpu = bool(use_gpu and _paddle_cuda_available())
+                    if use_gpu and not effective_use_gpu:
+                        st.warning("GPU requested but Paddle is CPU-only here; running OCR on CPU.")
 
                     try:
                         output_path, form_data, debug_path, ocr_results, transcript_lines, ocr_error = run_pipeline(
@@ -453,7 +494,7 @@ def main() -> None:
                             confidence=confidence,
                             preprocess=preprocess,
                             lang=engine_lang,
-                            use_gpu=use_gpu,
+                            use_gpu=effective_use_gpu,
                             template_path=template_path,
                             show_boxes=show_boxes,
                             use_angle_cls=use_angle_cls,
