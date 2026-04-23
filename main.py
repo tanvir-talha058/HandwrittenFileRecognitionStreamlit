@@ -70,7 +70,7 @@ def main() -> int:
     mapper = FieldMapper(config_path=args.config)
     mapper.conf_threshold = confidence
     form_data = mapper.map(ocr_results)
-
+    
     output_path = resolve_output_path(args, cfg, output_format)
 
     if output_format == "json":
